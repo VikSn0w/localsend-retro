@@ -11,6 +11,7 @@ ls_tls *ls_tls_connect(int fd) { (void)fd; return NULL; }
 int ls_tls_read(ls_tls *t, void *b, size_t n) { (void)t; (void)b; (void)n; return -1; }
 int ls_tls_write(ls_tls *t, const void *b, size_t n) { (void)t; (void)b; (void)n; return -1; }
 void ls_tls_close(ls_tls *t) { (void)t; }
+void ls_tls_info(ls_tls *t, char *out, size_t n) { (void)t; if (n) out[0] = 0; }
 ls_tls *ls_tls_connect_verified(int fd, const char *host, const char *ca, char *err, size_t es)
 {
     (void)fd; (void)host; (void)ca;
@@ -200,6 +201,27 @@ static int bio_recv(void *ctx, unsigned char *b, size_t n)
     return (int)r;
 }
 
+/* ChaCha20-Poly1305 first: without AES hardware (PowerPC) it is several times cheaper than
+ * AES-GCM, and every current LocalSend peer supports it. AES-GCM stays as a fallback. */
+static const int k_suites[] = {
+    MBEDTLS_TLS1_3_CHACHA20_POLY1305_SHA256,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+    MBEDTLS_TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+    MBEDTLS_TLS1_3_AES_128_GCM_SHA256,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+    MBEDTLS_TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+    MBEDTLS_TLS1_3_AES_256_GCM_SHA384,
+    MBEDTLS_TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+    MBEDTLS_TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+    0
+};
+
+void ls_tls_info(ls_tls *t, char *out, size_t n)
+{
+    if (!t || !n) return;
+    snprintf(out, n, "%s %s", mbedtls_ssl_get_version(&t->ssl), mbedtls_ssl_get_ciphersuite(&t->ssl));
+}
+
 static ls_tls *open_session(int fd, int server)
 {
     ls_tls *t = (ls_tls *)calloc(1, sizeof *t);
@@ -214,6 +236,7 @@ static ls_tls *open_session(int fd, int server)
     if (mbedtls_ssl_config_defaults(&t->conf, server ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT,
                                     MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT)) goto fail;
     mbedtls_ssl_conf_min_tls_version(&t->conf, MBEDTLS_SSL_VERSION_TLS1_2);
+    mbedtls_ssl_conf_ciphersuites(&t->conf, k_suites);
     mbedtls_ssl_conf_authmode(&t->conf, MBEDTLS_SSL_VERIFY_NONE);
     mbedtls_ssl_conf_rng(&t->conf, mbedtls_ctr_drbg_random, &t->drbg);
     /* LocalSend peers use mutual TLS: the client presents its certificate too. */

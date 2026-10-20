@@ -198,8 +198,11 @@ static void set_timeouts(int fd, int rcv, int snd)
 static plat_conn *wrap(int fd)
 {
     plat_conn *c = (plat_conn *)malloc(sizeof *c);
+    int big = 256 * 1024;
     c->fd = fd;
     set_timeouts(fd, 600, 60);
+    setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &big, sizeof big);
+    setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &big, sizeof big);
     return c;
 }
 

@@ -20,6 +20,7 @@ ls_tls *ls_tls_connect(int fd);   /* client side, no certificate verification */
 int ls_tls_read(ls_tls *t, void *buf, size_t n);          /* >0 bytes, 0 EOF, <0 error */
 int ls_tls_write(ls_tls *t, const void *buf, size_t n);   /* bytes written or <0 */
 void ls_tls_close(ls_tls *t);
+void ls_tls_info(ls_tls *t, char *out, size_t n);   /* "TLSv1.3 TLS1-3-CHACHA20-POLY1305-SHA256" */
 
 /* Verified client session (for downloading updates): checks the server certificate
  * against the CA bundle in ca_file and the host name. On failure returns NULL and

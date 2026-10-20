@@ -31,4 +31,5 @@ typedef unsigned int NSUInteger;
 - (void)showAbout:(id)sender;
 - (void)checkForUpdates:(id)sender;
 - (void)toggleAutoUpdate:(id)sender;
+- (void)toggleEncryption:(id)sender;
 @end

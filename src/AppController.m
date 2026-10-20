@@ -227,6 +227,8 @@ static void dl_progress(void *ud, long long done, long long total)
                     [[self dataDir] fileSystemRepresentation], LS_PORT, &cb);
     if (!core)
         [status setStringValue:@"Could not start: is another LocalSend using port 53317?"];
+    else if (![self encryptionEnabled])
+        ls_set_encryption(core, 0);
 
     [NSTimer scheduledTimerWithTimeInterval:1.0 target:self
                                    selector:@selector(reload:) userInfo:nil repeats:YES];
@@ -482,8 +484,27 @@ static void dl_progress(void *ud, long long done, long long total)
     [[NSUserDefaults standardUserDefaults] setBool:![self autoUpdateEnabled] forKey:@"autoUpdate"];
 }
 
+- (BOOL)encryptionEnabled
+{
+    id v = [[NSUserDefaults standardUserDefaults] objectForKey:@"encryption"];
+    return v ? [v boolValue] : YES;
+}
+
+- (void)toggleEncryption:(id)sender
+{
+    BOOL on = ![self encryptionEnabled];
+    [[NSUserDefaults standardUserDefaults] setBool:on forKey:@"encryption"];
+    if (core) ls_set_encryption(core, on ? 1 : 0);
+    [status setStringValue:on ? @"Encryption is on."
+        : @"Encryption is off: transfers are faster, but files cross your network unencrypted."];
+}
+
 - (BOOL)validateMenuItem:(NSMenuItem *)item
 {
+    if ([item action] == @selector(toggleEncryption:)) {
+        [item setState:[self encryptionEnabled] ? NSOnState : NSOffState];
+        return ls_https_available();
+    }
     if ([item action] == @selector(toggleAutoUpdate:))
         [item setState:[self autoUpdateEnabled] ? NSOnState : NSOffState];
     if ([item action] == @selector(checkForUpdates:)) return !checking && !installing;

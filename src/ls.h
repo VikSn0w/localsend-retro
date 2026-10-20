@@ -49,6 +49,10 @@ void ls_stop(ls_ctx *c);
 void ls_set_alias(ls_ctx *c, const char *alias);
 void ls_set_download_dir(ls_ctx *c, const char *dir);
 
+/* Announce https (on) or plain http (off) to other devices. Off is faster on old Macs and keeps
+ * working with every peer; incoming TLS connections are still accepted either way. */
+void ls_set_encryption(ls_ctx *c, int on);
+
 /* Whether HTTPS (sending to encrypted devices) works, and if not, why. */
 int ls_https_available(void);
 const char *ls_https_error(void);

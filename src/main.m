@@ -28,6 +28,8 @@ int main(int argc, char **argv)
     add_item(appMenu, @"Check for Updates...", @selector(checkForUpdates:), @"", ctl);
     add_item(appMenu, @"Check for Updates Automatically", @selector(toggleAutoUpdate:), @"", ctl);
     [appMenu addItem:[NSMenuItem separatorItem]];
+    add_item(appMenu, @"Encrypt Transfers (slower on old Macs)", @selector(toggleEncryption:), @"", ctl);
+    [appMenu addItem:[NSMenuItem separatorItem]];
     add_item(appMenu, @"Quit LocalSend", @selector(terminate:), @"q", nil);
     [appItem setSubmenu:appMenu];
 

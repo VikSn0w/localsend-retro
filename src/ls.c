@@ -594,6 +594,8 @@ static void do_upload(ls_ctx *c, stream *io, const char *query, breader *br)
     plat_file *f;
     prog pg;
     char *chunk;
+    double t0;
+    long long total_bytes;
 
     name[0] = 0;
     if (!qparam(query, "sessionId", sid, sizeof sid) || !qparam(query, "fileId", fid, sizeof fid)
@@ -626,11 +628,14 @@ static void do_upload(ls_ctx *c, stream *io, const char *query, breader *br)
     pg.done = 0;
     pg.last = 0;
     pg.sending = 0;
+    t0 = plat_now();
+    total_bytes = 0;
     chunk = (char *)malloc(IO_CHUNK);
     for (;;) {
         long r = br_read(br, chunk, IO_CHUNK);
         if (r < 0 || (r > 0 && plat_file_write(f, chunk, (size_t)r) != r)) { bad = 1; break; }
         if (r == 0) break;
+        total_bytes += r;
         prog_tick(&pg, r, 0);
     }
     free(chunk);
@@ -643,8 +648,15 @@ static void do_upload(ls_ctx *c, stream *io, const char *query, breader *br)
     }
     prog_tick(&pg, 0, 1);
     respond(io, 200, "{}");
-    ls_log(c, "received %s", path);
     if (c->cb.received) c->cb.received(c->cb.ud, path);
+    {
+        double secs = plat_now() - t0;
+        char how[96];
+        if (io->tls) ls_tls_info(io->tls, how, sizeof how); else strcpy(how, "plain HTTP (no encryption)");
+        if (secs < 0.001) secs = 0.001;
+        ls_log(c, "received %s: %ld KB in %.1f s, %ld KB/s, %s", safe, (long)(total_bytes / 1024), secs,
+               (long)((double)total_bytes / 1024.0 / secs), how);
+    }
 }
 
 typedef struct { ls_ctx *c; plat_conn *pc; char ip[48]; } conn;
@@ -664,7 +676,7 @@ static void handle_conn(ls_ctx *c, plat_conn *pc, const char *ip)
     /* A TLS ClientHello starts with 0x16; anything else is plain HTTP. */
     first = plat_conn_peek(pc);
     if (first < 0) goto out;
-    if (first == 0x16 && c->use_tls) {
+    if (first == 0x16 && ls_tls_available()) {
         sm.tls = ls_tls_accept(plat_conn_fd(pc));
         if (!sm.tls) { ls_log(c, "TLS handshake with %s failed", ip); goto out; }
     }
@@ -813,6 +825,13 @@ void ls_set_download_dir(ls_ctx *c, const char *dir)
     plat_mkdir(dir);
 }
 
+void ls_set_encryption(ls_ctx *c, int on)
+{
+    if (on && !ls_tls_available()) return;
+    c->use_tls = on ? 1 : 0;
+    mcast_send(c, 1);       /* peers learn the new protocol from the announcement */
+}
+
 int ls_https_available(void) { return ls_tls_available(); }
 const char *ls_https_error(void) { return ls_tls_error(); }
 
@@ -951,6 +970,7 @@ int ls_send(ls_ctx *c, const ls_peer *p, int n, const char **paths)
     int i, st = 0, rc = -1, tls;
     jval *root = NULL, *tokens, *sid;
     char sessionId[64], fileId[16], url[512];
+    double t_send = 0;
 
     b.p = NULL;
     b.n = b.cap = 0;
@@ -1018,6 +1038,7 @@ int ls_send(ls_ctx *c, const ls_peer *p, int n, const char **paths)
         pg.done = 0;
         pg.last = 0;
         pg.sending = 1;
+        t_send = plat_now();
         if (http_request(c, p->ip, p->port, "POST", url, NULL, 0, paths[i], sizes[i], &pg, &st, &r2, tls) != 0
             || st != 200) {
             ls_log(c, "upload of %s failed (HTTP %d)", names[i], st);
@@ -1029,7 +1050,12 @@ int ls_send(ls_ctx *c, const ls_peer *p, int n, const char **paths)
             goto out;
         }
         free(r2);
-        ls_log(c, "sent %s", names[i]);
+        {
+            double secs = plat_now() - t_send;
+            if (secs < 0.001) secs = 0.001;
+            ls_log(c, "sent %s: %ld KB in %.1f s, %ld KB/s, %s", names[i], (long)(sizes[i] / 1024), secs,
+                   (long)((double)sizes[i] / 1024.0 / secs), tls ? "HTTPS" : "plain HTTP");
+        }
     }
     rc = 0;
 out:
