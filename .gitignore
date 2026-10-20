@@ -10,3 +10,4 @@ third_party/src/
 *-update-key.pem
 .DS_Store
 *.zip
+release/
