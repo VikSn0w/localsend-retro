@@ -142,7 +142,7 @@ static void dl_progress(void *ud, long long done, long long total)
                                                     NSMiniaturizableWindowMask | NSResizableWindowMask)
                                            backing:NSBackingStoreBuffered
                                              defer:NO];
-    [window setTitle:@"LocalSend for PowerPC"];
+    [window setTitle:[NSString stringWithFormat:@"LocalSend for PowerPC %@", [self appVersion]]];
     [window setMinSize:NSMakeSize(440, 330)];
     content = [window contentView];
 
@@ -192,6 +192,14 @@ static void dl_progress(void *ud, long long done, long long total)
     [content addSubview:sendButton];
     refresh = [self buttonAt:NSMakeRect(160, 112, 100, 28) title:@"Refresh" action:@selector(refresh:)];
     [content addSubview:refresh];
+    encCheck = [[[NSButton alloc] initWithFrame:NSMakeRect(272, 114, 228, 24)] autorelease];
+    [encCheck setButtonType:NSSwitchButton];
+    [encCheck setTitle:@"Encrypt transfers"];
+    [encCheck setTarget:self];
+    [encCheck setAction:@selector(toggleEncryption:)];
+    [encCheck setToolTip:@"Turn off for faster transfers on a network you trust. Other devices still work."];
+    [encCheck setAutoresizingMask:NSViewMinXMargin];
+    [content addSubview:encCheck];
 
     bar = [[[NSProgressIndicator alloc] initWithFrame:NSMakeRect(20, 84, 480, 16)] autorelease];
     [bar setStyle:NSProgressIndicatorBarStyle];
@@ -229,6 +237,10 @@ static void dl_progress(void *ud, long long done, long long total)
         [status setStringValue:@"Could not start: is another LocalSend using port 53317?"];
     else if (![self encryptionEnabled])
         ls_set_encryption(core, 0);
+    [self syncEncryptionControls];
+    if (core && !ls_https_available())
+        [status setStringValue:[NSString stringWithFormat:
+            @"HTTPS is not available (%s). Only plain HTTP devices can be used.", ls_https_error()]];
 
     [NSTimer scheduledTimerWithTimeInterval:1.0 target:self
                                    selector:@selector(reload:) userInfo:nil repeats:YES];
@@ -444,7 +456,8 @@ static void dl_progress(void *ud, long long done, long long total)
         [c addSubview:t];
         [c addSubview:[self labelAt:NSMakeRect(112, 262, 270, 17)
                                text:[NSString stringWithFormat:@"Version %@", [self appVersion]]]];
-        tls = ls_https_available() ? @"HTTPS: available" : @"HTTPS: not available in this build";
+        tls = ls_https_available() ? @"HTTPS: available"
+            : [NSString stringWithFormat:@"HTTPS: not available (%s)", ls_https_error()];
         [c addSubview:[self labelAt:NSMakeRect(112, 244, 270, 17) text:tls]];
 
         t = [self labelAt:NSMakeRect(20, 150, 360, 70)
@@ -490,11 +503,20 @@ static void dl_progress(void *ud, long long done, long long total)
     return v ? [v boolValue] : YES;
 }
 
+- (void)syncEncryptionControls
+{
+    BOOL ok = ls_https_available() ? YES : NO;
+    [encCheck setEnabled:ok];
+    [encCheck setState:(ok && [self encryptionEnabled]) ? NSOnState : NSOffState];
+    if (!ok) [encCheck setTitle:@"Encryption unavailable"];
+}
+
 - (void)toggleEncryption:(id)sender
 {
     BOOL on = ![self encryptionEnabled];
     [[NSUserDefaults standardUserDefaults] setBool:on forKey:@"encryption"];
     if (core) ls_set_encryption(core, on ? 1 : 0);
+    [self syncEncryptionControls];
     [status setStringValue:on ? @"Encryption is on."
         : @"Encryption is off: transfers are faster, but files cross your network unencrypted."];
 }

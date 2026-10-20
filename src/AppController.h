@@ -21,6 +21,7 @@ typedef unsigned int NSUInteger;
     NSTextField *nameField;
     NSProgressIndicator *bar;
     NSButton *sendButton;
+    NSButton *encCheck;
     NSString *downloadDir;
     NSString *defaultName;
     BOOL checking;
@@ -32,4 +33,5 @@ typedef unsigned int NSUInteger;
 - (void)checkForUpdates:(id)sender;
 - (void)toggleAutoUpdate:(id)sender;
 - (void)toggleEncryption:(id)sender;
+- (void)syncEncryptionControls;
 @end
