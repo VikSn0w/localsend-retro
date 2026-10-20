@@ -21,7 +21,8 @@ receives files with them. Part of the [Retrofitting project](https://viksn0w.git
 ## Install (Mac OS X)
 
 Download `LocalSend-macosx-ppc.zip` from the [latest release](https://github.com/viksn0w/localsend-retro/releases/latest),
-unzip, and run `LocalSend.app`. After that it can update itself (App menu > *Check for Updates...*).
+unzip, and run `LocalSend.app`. The prebuilt app is for **Mac OS X 10.5 Leopard on PowerPC (G4 or G5)**; for 10.3 and
+10.4, build from source (below). After the first launch it can update itself (App menu > *Check for Updates...*).
 
 ## Build from source
 
