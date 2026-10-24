@@ -544,8 +544,8 @@ static void hfs_name(const char *in, char *out)
 static void type_for(const char *name, OSType *type, OSType *creator)
 {
     size_t n = strlen(name);
-    *type = '????';
-    *creator = '????';
+    *type = 0x3F3F3F3FUL;        /* '????' written numerically: the literal contains a trigraph */
+    *creator = 0x3F3F3F3FUL;
     if (n > 4 && (name[n - 4] == '.') && (name[n - 3] == 't' || name[n - 3] == 'T')
         && (name[n - 2] == 'x' || name[n - 2] == 'X') && (name[n - 1] == 't' || name[n - 1] == 'T')) {
         *type = 'TEXT';

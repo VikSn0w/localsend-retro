@@ -35,3 +35,19 @@ MathLib, ThreadsLib, OpenTransportLib, OpenTptInternetLib, OpenTransportAppPPC.o
 OpenTptInetPPC.o. Define LS_OS9 (and LS_NO_VSNPRINTF if your library has no vsnprintf).
 Compile os9/localsend.r with Rez into the project's resource file; set creator LSPC, type APPL.
 Access paths must include src and os9 and assets/os9.
+
+First test, step by step
+------------------------
+1. Build it (steps above). If MPW stops with an error, take a photo or copy the first error lines
+   (the line that starts with  File "..." ; line NN  and the message under it) and send them.
+2. Open the new LocalSend application. If the icon looks plain, restart while holding Command+Option
+   to rebuild the Desktop file.
+3. Look at the window: it should show your Mac's IP address at the bottom and "Ready. Waiting for devices...".
+4. On a phone or computer on the same network, open the official LocalSend app. Your Mac should appear in its
+   list as "<your Macintosh name> (OS 9)". If it does not, press Refresh in this app and in LocalSend.
+5. Send a small file from LocalSend to the OS 9 Mac. An Accept/Decline box appears; click Accept.
+   The file lands on the Desktop. Tell me whether it worked and what the status line said.
+6. Optional: in the LocalSend app, turn encryption OFF in its network settings, wait for the OS 9 Mac to show up,
+   then select it here and use Send File... to send a file the other way.
+
+What to report: what worked, what did not, the exact status-line text, and (for crashes) what you clicked last.

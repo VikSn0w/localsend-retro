@@ -486,7 +486,7 @@ static void start_core(void)
     if (h && **(unsigned char **)h > 0) {
         unsigned char n = **(unsigned char **)h;
         if (n > 60) n = 60;
-        memcpy(alias, *h + 1, n);
+        memcpy(alias, *(char **)h + 1, n);
         alias[n] = 0;
     }
     strcat(alias, " (OS 9)");
