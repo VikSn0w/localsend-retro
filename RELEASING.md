@@ -31,4 +31,6 @@ The Mac's clock must be roughly right, or certificate checks fail.
 
 ## Not covered
 
-Mac OS 9 has no TLS, so the Classic version cannot check for updates; download new builds by hand.
+Mac OS 9 has no TLS, so the Classic version cannot check for updates; download new builds by hand. Build it with
+`os9/build.sh` and `python3 tools/pack_os9.py`, then attach `dist/LocalSend-OS9.zip` to the same GitHub release
+(the Mac OS X updater only looks for its own two files, so extra assets are harmless).
