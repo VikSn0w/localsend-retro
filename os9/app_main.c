@@ -30,6 +30,8 @@ static char gAlias[96];
 static char gDir[48];
 static char gIp[24];
 static char gStatus[160];
+static int gEditing = 0;           /* typing a new device name */
+static char gEdit[48];
 
 /* shared with the core's threads */
 static volatile long gPct = 0;
@@ -142,6 +144,80 @@ static void say(const char *text)
     gDirtyAll = 1;
 }
 
+/* ------------------------------------------------------------- device name */
+
+#define NAME_PREF "LocalSend Name"
+
+/* Printable ASCII only, trimmed, at most 40 characters. */
+static void clean_name(const char *in, char *out, int size)
+{
+    int n = 0, pendingSpace = 0;
+    for (; *in && n < size - 1 && n < 40; in++) {
+        unsigned char ch = (unsigned char)*in;
+        if (ch == ' ') { pendingSpace = n > 0; continue; }
+        if (ch < 33 || ch > 126) continue;
+        if (pendingSpace && n < size - 2) { out[n++] = ' '; }
+        pendingSpace = 0;
+        out[n++] = (char)ch;
+    }
+    out[n] = 0;
+}
+
+/* The Macintosh name from File Sharing / Sharing Setup, or "" when it is missing or unreadable. */
+static void macintosh_name(char *out, int size)
+{
+    Handle h = GetResource('STR ', -16413);
+    char raw[64];
+    out[0] = 0;
+    if (h && GetHandleSize(h) >= 2) {
+        long total = GetHandleSize(h);
+        int len = (int)(*(unsigned char *)*h);
+        if (len > total - 1) len = (int)(total - 1);
+        if (len > 40) len = 40;
+        if (len > 0) {
+            memcpy(raw, *(char **)h + 1, (size_t)len);
+            raw[len] = 0;
+            clean_name(raw, out, size);
+        }
+    }
+}
+
+static void choose_alias(void)
+{
+    char saved[64], cleaned[64];
+    saved[0] = 0;
+    plat_carbon_read_pref(NAME_PREF, saved, (int)sizeof saved);
+    clean_name(saved, cleaned, (int)sizeof cleaned);
+    if (cleaned[0]) { strcpy(gAlias, cleaned); return; }
+    macintosh_name(cleaned, (int)sizeof cleaned);
+    if (cleaned[0]) { sprintf(gAlias, "%.40s (OS 9)", cleaned); return; }
+    strcpy(gAlias, "Mac OS 9");
+}
+
+static void start_editing(void)
+{
+    strncpy(gEdit, gAlias, sizeof gEdit - 1);
+    gEdit[sizeof gEdit - 1] = 0;
+    gEditing = 1;
+    invalidate();
+}
+
+static void finish_editing(int commit)
+{
+    char cleaned[64];
+    gEditing = 0;
+    if (commit) {
+        clean_name(gEdit, cleaned, (int)sizeof cleaned);
+        if (cleaned[0]) {
+            strcpy(gAlias, cleaned);
+            plat_carbon_write_pref(NAME_PREF, gAlias);
+            if (gCore) ls_set_alias(gCore, gAlias);
+            say("Device name changed.");
+        }
+    }
+    invalidate();
+}
+
 /* ------------------------------------------------------- core callbacks */
 
 static void cb_peer(void *ud, const ls_peer *p)
@@ -201,6 +277,8 @@ static int cb_incoming(void *ud, const char *from, int n, const ls_file *files)
 
 static Rect list_rect(void) { return make_rect(12, 78, WIN_W - 12, 78 + ROW_H * 8 + 2); }
 static Rect refresh_btn(void) { return make_rect(12, 236, 92, 260); }
+static Rect rename_btn(void) { return make_rect(104, 236, 192, 260); }
+static Rect name_field(void) { return make_rect(12, 40, WIN_W - 12, 62); }
 static Rect bar_rect(void) { return make_rect(12, 276, WIN_W - 12, 290); }
 static Rect accept_btn(void) { return make_rect(300, 252, 380, 278); }
 static Rect decline_btn(void) { return make_rect(392, 252, 472, 278); }
@@ -308,9 +386,24 @@ static void draw(void)
     draw_text(WIN_W - 130, 32, "version " APP_VERSION, 118);
     ink();
 
-    sprintf(buf, "This Mac appears in LocalSend as \"%.60s\".", gAlias);
-    draw_text(12, 56, buf, WIN_W - 24);
-    draw_text(12, 74, "Nearby devices", 200);
+    if (gEditing) {
+        Rect f = name_field();
+        int w;
+        EraseRect(&f);
+        FrameRect(&f);
+        draw_text(f.left + 6, f.top + 15, gEdit, f.right - f.left - 20);
+        w = width_of(gEdit);
+        if (w > f.right - f.left - 20) w = f.right - f.left - 20;
+        MoveTo((short)(f.left + 7 + w), (short)(f.top + 4));
+        LineTo((short)(f.left + 7 + w), (short)(f.bottom - 4));
+        grey();
+        draw_text(12, 74, "Type the new name, then press Return. Esc cancels.", WIN_W - 24);
+        ink();
+    } else {
+        sprintf(buf, "This Mac appears in LocalSend as \"%.60s\".", gAlias);
+        draw_text(12, 56, buf, WIN_W - 24);
+        draw_text(12, 74, "Nearby devices", 200);
+    }
 
     FrameRect(&list);
     for (i = 0; i < gNPeers && i < 8; i++) {
@@ -327,11 +420,12 @@ static void draw(void)
     }
 
     {
-        Rect rb = refresh_btn();
+        Rect rb = refresh_btn(), nb = rename_btn();
         draw_button(&rb, "Refresh", 0);
+        draw_button(&nb, "Rename...", 0);
     }
     grey();
-    draw_text(104, 252, "To send a file here: pick this Mac in LocalSend on the other device.", WIN_W - 116);
+    draw_text(204, 252, "To send a file here, pick this Mac in LocalSend.", WIN_W - 216);
     ink();
 
     draw_bar();
@@ -395,6 +489,14 @@ static void do_menu(long chosen)
 
 static void on_key(char c, short modifiers)
 {
+    if (gEditing && !(modifiers & cmdKey)) {
+        size_t n = strlen(gEdit);
+        if (c == '\r' || c == 3) finish_editing(1);
+        else if (c == 27) finish_editing(0);
+        else if ((c == 8 || c == 127) && n > 0) { gEdit[n - 1] = 0; invalidate(); }
+        else if ((unsigned char)c >= 32 && (unsigned char)c < 127 && n < 40) { gEdit[n] = c; gEdit[n + 1] = 0; invalidate(); }
+        return;
+    }
     if (modifiers & cmdKey) {
         if (c == 'q' || c == 'Q') gQuit = 1;
         else if (c == '.' && gReq.pending) { gReq.accept = 0; gReq.pending = 0; invalidate(); }
@@ -419,8 +521,11 @@ static void on_click(EventRecord *ev)
         if (inside(&r, p)) { gReq.accept = 0; gReq.pending = 0; invalidate(); return; }
         return;
     }
+    if (gEditing) return;
     r = refresh_btn();
-    if (inside(&r, p)) refresh_now();
+    if (inside(&r, p)) { refresh_now(); return; }
+    r = rename_btn();
+    if (inside(&r, p)) start_editing();
 }
 
 static void refresh_peers(void)
@@ -500,20 +605,8 @@ static void pump(void)
 static void start_core(void)
 {
     ls_callbacks cb;
-    Handle h;
 
-    strcpy(gAlias, "Mac OS 9");
-    h = GetResource('STR ', -16413);            /* the Macintosh name from Sharing Setup */
-    if (h && **(unsigned char **)h > 0) {
-        unsigned char n = **(unsigned char **)h;
-        char name[64];
-        if (n > 40) n = 40;
-        memcpy(name, *(char **)h + 1, n);
-        name[n] = 0;
-        strcpy(gAlias, name);
-    }
-    if (strlen(gAlias) > 56) gAlias[56] = 0;
-    strcat(gAlias, " (OS 9)");
+    choose_alias();
 
     memset(&cb, 0, sizeof cb);
     cb.peer = cb_peer;

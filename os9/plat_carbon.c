@@ -789,3 +789,56 @@ int plat_carbon_local_ip(char *out, int size)
     CloseOpenTransportInContext(ctx);
     return ok ? 0 : -1;
 }
+
+/* ------------------------------------------------------- settings file */
+
+static int prefs_spec(const char *name, FSSpec *spec)
+{
+    short volume;
+    long dir;
+    unsigned char p[64];
+    OSErr err;
+    to_pascal(name, p);
+    /* Mac OS X: the user's own Preferences folder; Mac OS 9 has no user domain and FindFolder fails, then the
+     * System Folder's Preferences. */
+    if (FindFolder(-32763 /* kUserDomain */, 0x70726566 /* 'pref' */, 1, &volume, &dir) != noErr &&
+        FindFolder(-32768 /* kOnSystemDisk */, 0x70726566, 1, &volume, &dir) != noErr)
+        return -1;
+    err = FSMakeFSSpec(volume, dir, p, spec);
+    return (err == noErr || err == fnfErr) ? 0 : -1;
+}
+
+int plat_carbon_read_pref(const char *name, char *out, int size)
+{
+    FSSpec spec;
+    short ref;
+    long count;
+    out[0] = 0;
+    if (prefs_spec(name, &spec) != 0) return 0;
+    if (FSpOpenDF(&spec, fsRdPerm, &ref) != noErr) return 0;
+    count = size - 1;
+    if (FSRead(ref, &count, out) != noErr && count < 0) count = 0;
+    FSClose(ref);
+    if (count < 0) count = 0;
+    out[count] = 0;
+    return (int)count;
+}
+
+int plat_carbon_write_pref(const char *name, const char *text)
+{
+    FSSpec spec;
+    short ref;
+    long count = (long)strlen(text);
+    OSErr err;
+    if (prefs_spec(name, &spec) != 0) return -1;
+    err = FSpOpenDF(&spec, fsRdWrPerm, &ref);
+    if (err == fnfErr) {
+        FSpCreate(&spec, 0x3F3F3F3FUL, 0x54455854UL, smSystemScript);     /* '????', 'TEXT' */
+        err = FSpOpenDF(&spec, fsRdWrPerm, &ref);
+    }
+    if (err != noErr) return -1;
+    SetEOF(ref, 0);
+    err = FSWrite(ref, &count, text);
+    FSClose(ref);
+    return err == noErr ? 0 : -1;
+}
