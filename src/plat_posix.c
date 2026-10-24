@@ -354,6 +354,12 @@ void plat_file_close(plat_file *f)
 
 void plat_file_remove(const char *path) { unlink(path); }
 
+void plat_file_abort(plat_file *f, const char *path)
+{
+    if (f) { close(f->fd); free(f); }
+    unlink(path);
+}
+
 plat_file *plat_file_open_read(const char *path)
 {
     int fd = open(path, O_RDONLY);

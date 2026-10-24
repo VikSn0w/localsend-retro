@@ -639,23 +639,25 @@ static void do_upload(ls_ctx *c, stream *io, const char *query, breader *br)
         prog_tick(&pg, r, 0);
     }
     free(chunk);
-    plat_file_close(f);
     if (bad) {
-        plat_file_remove(path);
+        plat_file_abort(f, path);
         respond(io, 400, "{\"message\":\"Transfer failed\"}");
         ls_log(c, "receive of %s failed", safe);
         return;
     }
+    plat_file_close(f);
     prog_tick(&pg, 0, 1);
     respond(io, 200, "{}");
     if (c->cb.received) c->cb.received(c->cb.ud, path);
     {
         double secs = plat_now() - t0;
+        long tenths;
         char how[96];
         if (io->tls) ls_tls_info(io->tls, how, sizeof how); else strcpy(how, "plain HTTP (no encryption)");
         if (secs < 0.001) secs = 0.001;
-        ls_log(c, "received %s: %ld KB in %.1f s, %ld KB/s, %s", safe, (long)(total_bytes / 1024), secs,
-               (long)((double)total_bytes / 1024.0 / secs), how);
+        tenths = (long)(secs * 10.0 + 0.5);
+        ls_log(c, "received %s: %ld KB in %ld.%ld s, %ld KB/s, %s", safe, (long)(total_bytes / 1024), tenths / 10,
+               tenths % 10, (long)((double)total_bytes / 1024.0 / secs), how);
     }
 }
 
@@ -1052,9 +1054,11 @@ int ls_send(ls_ctx *c, const ls_peer *p, int n, const char **paths)
         free(r2);
         {
             double secs = plat_now() - t_send;
+            long tenths;
             if (secs < 0.001) secs = 0.001;
-            ls_log(c, "sent %s: %ld KB in %.1f s, %ld KB/s, %s", names[i], (long)(sizes[i] / 1024), secs,
-                   (long)((double)sizes[i] / 1024.0 / secs), tls ? "HTTPS" : "plain HTTP");
+            tenths = (long)(secs * 10.0 + 0.5);
+            ls_log(c, "sent %s: %ld KB in %ld.%ld s, %ld KB/s, %s", names[i], (long)(sizes[i] / 1024), tenths / 10,
+                   tenths % 10, (long)((double)sizes[i] / 1024.0 / secs), tls ? "HTTPS" : "plain HTTP");
         }
     }
     rc = 0;

@@ -54,6 +54,8 @@ plat_file *plat_file_create_unique(const char *dir, const char *name, char *path
 long plat_file_write(plat_file *f, const void *buf, size_t n);
 void plat_file_close(plat_file *f);
 void plat_file_remove(const char *path);
+/* Closes f and deletes the half-written file it points to (path is what create_unique returned). */
+void plat_file_abort(plat_file *f, const char *path);
 plat_file *plat_file_open_read(const char *path);
 long plat_file_read(plat_file *f, void *buf, size_t n);
 int plat_file_size(const char *path, long long *size);           /* 0 on success */
