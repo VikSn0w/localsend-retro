@@ -20,7 +20,7 @@ OSErr GetEOF(short refNum, long *logEOF);
 #define THREAD_STACK 131072L
 #define FOLDER_DESKTOP 0x6465736B   /* 'desk' */
 
-struct plat_conn { EndpointRef ep; };
+struct plat_conn { EndpointRef ep; double grace_until; };
 struct plat_listener { EndpointRef ep; };
 struct plat_udp { EndpointRef ep; };
 struct plat_file { short ref; FSSpec spec; };
@@ -352,17 +352,15 @@ plat_conn *plat_tcp_accept(plat_listener *l, char *ip_out, int timeout_ms)
         OTCloseProvider(nep);
         return NULL;
     }
-    /* the connection is complete when the new endpoint reports T_PASSCON */
-    until = plat_now() + 10.0;
-    for (;;) {
+    /* OTAccept has succeeded: use the connection at once. (Waiting for a T_PASSCON event does not work when polling:
+     * it never shows up in OTLook, and the first version of this code dropped every connection after 10 seconds.)
+     * The first reads and writes tolerate a short "not connected yet" state. */
+    until = plat_now() + 0.3;
+    while (plat_now() < until) {
         OTResult look = OTLook(nep);
         if (look == T_PASSCON) break;
         if (look == T_DISCONNECT) {
             OTRcvDisconnect(nep, NULL);
-            OTCloseProvider(nep);
-            return NULL;
-        }
-        if (plat_now() > until) {
             OTCloseProvider(nep);
             return NULL;
         }
@@ -371,6 +369,7 @@ plat_conn *plat_tcp_accept(plat_listener *l, char *ip_out, int timeout_ms)
     ip_to_str(peer.fHost, ip_out);
     c = (plat_conn *)malloc(sizeof *c);
     c->ep = nep;
+    c->grace_until = plat_now() + 5.0;
     return c;
 }
 
@@ -439,6 +438,7 @@ plat_conn *plat_tcp_connect(const char *ip, int port, int timeout_s)
     }
     c = (plat_conn *)malloc(sizeof *c);
     c->ep = ep;
+    c->grace_until = 0;
     return c;
 }
 
@@ -461,6 +461,8 @@ static long conn_read_poll(plat_conn *c, void *buf, size_t n, double deadline)
                 return 0;
             }
             /* T_PASSCON, T_GODATA and the like need no action: try again */
+        } else if (r == kOTOutStateErr && plat_now() < c->grace_until) {
+            /* just accepted: not in the data-transfer state yet */
         } else if (r != kOTNoDataErr && r != 0) {
             return -1;
         }
@@ -481,7 +483,7 @@ long plat_conn_write(plat_conn *c, const void *buf, size_t n)
     for (;;) {
         r = OTSnd(c->ep, (void *)buf, (OTByteCount)n, 0);
         if (r > 0) return (long)r;
-        if (r == kOTFlowErr || r == kOTNoDataErr || r == 0) {
+        if (r == kOTFlowErr || r == kOTNoDataErr || r == 0 || (r == kOTOutStateErr && plat_now() < c->grace_until)) {
             if (plat_now() - started > 60.0) return -1;
             YieldToAnyThread();
             continue;

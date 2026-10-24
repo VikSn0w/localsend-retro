@@ -689,6 +689,10 @@ static void handle_conn(ls_ctx *c, plat_conn *pc, const char *ip)
         if (r <= 0) goto out;
         have += (size_t)r;
         hdr[have] = 0;
+        if (!io->tls && (unsigned char)hdr[0] == 0x16) {   /* a TLS ClientHello, but this build cannot do TLS */
+            ls_log(c, "%s tried an encrypted connection. Turn Encryption off in LocalSend's settings.", ip);
+            goto out;
+        }
         e = strstr(hdr, "\r\n\r\n");
     }
     hlen = (size_t)(e - hdr) + 4;
@@ -712,6 +716,7 @@ static void handle_conn(ls_ctx *c, plat_conn *pc, const char *ip)
     chunked = find_header(hdr, "transfer-encoding", tmp, sizeof tmp) && ls_strcasestr(tmp, "chunked") != NULL;
     q = strchr(path, '?');
     if (q) *q++ = 0;
+    ls_log(c, "%s %s from %s", method, path, ip);     /* path without the query: it holds a secret token */
     body = hdr + hlen;              /* leftover bytes already received */
     memset(&br, 0, sizeof br);
     br.io = io;
